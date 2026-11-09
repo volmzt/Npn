@@ -1,0 +1,54 @@
+name: Build release APK
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract project zip if exists
+        run: |
+          if [ -f "project_source.zip" ]; then
+            unzip -q -o project_source.zip -d extracted_project/
+          fi
+
+      - name: Locate Gradle project root
+        id: root
+        run: |
+          if [ -d extracted_project ]; then SEARCH=extracted_project; else SEARCH=.; fi
+          ROOT=$(find "$SEARCH" -maxdepth 3 \( -name 'settings.gradle' -o -name 'settings.gradle.kts' \) -printf '%h\n' | sort | head -n1)
+          if [ -z "$ROOT" ]; then echo "settings.gradle not found"; exit 1; fi
+          echo "Project root: $ROOT"
+          echo "dir=$ROOT" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.9
+
+      - name: Build release APK
+        working-directory: ${{ steps.root.outputs.dir }}
+        run: |
+          if [ -f ./gradlew ]; then
+            chmod +x ./gradlew
+            ./gradlew assembleRelease --no-daemon --stacktrace
+          else
+            gradle assembleRelease --no-daemon --stacktrace
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HyperLauncherSim-release-apk
+          path: ${{ steps.root.outputs.dir }}/app/build/outputs/apk/release/*.apk
